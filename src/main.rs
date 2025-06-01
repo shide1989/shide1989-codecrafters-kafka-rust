@@ -80,10 +80,10 @@ fn handle_connection(mut stream: TcpStream) {
     };
     let buf = res.to_buffer();
 
-    if let Err(e) = stream.write_all(&buf) {
-        eprintln!("Error writing to stream: {e}");
-        return;
-    };
+    stream.write_all(&buf).unwrap();
+    stream.flush().unwrap();
+    stream.shutdown(std::net::Shutdown::Both).unwrap();
+
     println!("Stream written.")
 }
 
