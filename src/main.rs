@@ -1,6 +1,11 @@
 #![allow(unused_imports)]
-use bytes::{BufMut, Bytes, BytesMut};
-use std::{io::Write, net::TcpListener};
+use bytes::{Buf, BufMut, Bytes, BytesMut};
+use std::io::prelude::*;
+
+use std::{
+    io::Write,
+    net::{TcpListener, TcpStream},
+};
 
 struct Response {
     message_size: i32,
@@ -8,35 +13,92 @@ struct Response {
 }
 
 impl Response {
-    fn to_bytes(&self) -> Bytes {
-        let mut buf = BytesMut::with_capacity(8); // 4 bytes for each i32
+    fn to_buffer(&self) -> [u8; 8] {
+        let mut buf = [0; 8];
+        buf[0..4].copy_from_slice(&self.message_size.to_be_bytes());
+        buf[4..8].copy_from_slice(&self.correlation_id.to_be_bytes());
+        buf
+    }
+}
+
+#[derive(Debug)]
+struct Request {
+    message_size: i32,
+    request_api_key: i16,
+    request_api_version: i16,
+    correlation_id: i32,
+}
+
+impl TryFrom<Bytes> for Request {
+    type Error = &'static str;
+
+    fn try_from(mut value: Bytes) -> Result<Self, Self::Error> {
+        if value.len() == 0 {
+            Err("BytesMut value is empty")
+        } else {
+            Ok(Request {
+                message_size: value.get_i32(),
+                request_api_key: value.get_i16(),
+                request_api_version: value.get_i16(),
+                correlation_id: value.get_i32(),
+            })
+        }
+    }
+}
+
+impl Into<Bytes> for Request {
+    fn into(self) -> Bytes {
+        let mut buf = BytesMut::new();
+
         buf.put_i32(self.message_size);
         buf.put_i32(self.correlation_id);
+        buf.put_i16(self.request_api_key);
+        buf.put_i16(self.request_api_version);
+
         buf.freeze()
     }
 }
 
-fn main() {
+fn handle_connection(mut stream: TcpStream) {
+    println!("accepted new connection");
+    // For now assume we read only the first 12 bytes.
+    let capacity: usize = 12;
+
+    let mut buf = BytesMut::with_capacity(capacity);
+    buf.resize(capacity, 0);
+    if let Err(e) = stream.read(&mut buf) {
+        eprintln!("Error reading from stream: {e}");
+        return;
+    }
+    let req = Request::try_from(buf.freeze()).expect("Request should have been parsed.");
+
+    println!("Parsed request: {req:?}");
+
+    let res = Response {
+        correlation_id: req.correlation_id,
+        message_size: 0,
+    };
+    let buf = res.to_buffer();
+
+    if let Err(e) = stream.write_all(&buf) {
+        eprintln!("Error writing to stream: {e}");
+        return;
+    };
+    println!("Stream written.")
+}
+
+fn main() -> std::io::Result<()> {
     let listener = TcpListener::bind("127.0.0.1:9092").unwrap();
 
     for stream in listener.incoming() {
         match stream {
-            Ok(mut _stream) => {
-                println!("accepted new connection");
-                let res = Response {
-                    correlation_id: 7,
-                    message_size: 0,
-                };
-                let bytes = res.to_bytes();
-
-                if let Err(e) = _stream.write_all(&bytes) {
-                    eprintln!("Error writing to stream: {e}");
-                };
-                println!("Stream written.")
+            Ok(stream) => {
+                handle_connection(stream);
             }
             Err(e) => {
-                println!("error: {}", e);
+                eprintln!("Connection failed {e}")
             }
         }
     }
+    Ok(())
 }
