@@ -10,13 +10,15 @@ use std::{
 struct Response {
     message_size: i32,
     correlation_id: i32,
+    error_code: i16,
 }
 
 impl Response {
-    fn to_buffer(&self) -> [u8; 8] {
-        let mut buf = [0; 8];
+    fn to_buffer(&self) -> [u8; 10] {
+        let mut buf = [0; 10];
         buf[0..4].copy_from_slice(&self.message_size.to_be_bytes());
         buf[4..8].copy_from_slice(&self.correlation_id.to_be_bytes());
+        buf[8..10].copy_from_slice(&self.error_code.to_be_bytes());
         buf
     }
 }
@@ -64,8 +66,8 @@ fn handle_connection(mut stream: TcpStream) {
     // For now assume we read only the first 12 bytes.
     let capacity: usize = 12;
 
-    let mut buf = BytesMut::with_capacity(capacity);
-    buf.resize(capacity, 0);
+    let mut buf = BytesMut::zeroed(capacity);
+
     if let Err(e) = stream.read(&mut buf) {
         eprintln!("Error reading from stream: {e}");
         return;
@@ -77,6 +79,7 @@ fn handle_connection(mut stream: TcpStream) {
     let res = Response {
         correlation_id: req.correlation_id,
         message_size: 0,
+        error_code: 35,
     };
     let buf = res.to_buffer();
 
