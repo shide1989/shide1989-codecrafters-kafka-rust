@@ -1,5 +1,6 @@
 #![allow(unused_imports)]
 use bytes::{Buf, BufMut, Bytes, BytesMut};
+use codecrafters_kafka::versions::*;
 use std::io::prelude::*;
 
 use std::{
@@ -8,18 +9,57 @@ use std::{
 };
 
 struct Response {
-    message_size: i32,
+    // Response header
     correlation_id: i32,
+    // Response body
     error_code: i16,
+    api_versions: SupportedVersions,
 }
 
+// const RESPONSE_CAPACITY: usize = 32;
+const HEADER_SIZE: i32 = 4;
+const ERROR_CODE_SIZE: i32 = 2;
+const THROTTLE_TIME_MS_SIZE: i32 = 4;
+const TAG_BUFFER_SIZE: i32 = 1;
+
+const THROTTLE_TIMER: i32 = 0;
+const TAG_BUFFER: i8 = 0;
+
 impl Response {
-    fn to_buffer(&self) -> [u8; 10] {
-        let mut buf = [0; 10];
-        buf[0..4].copy_from_slice(&self.message_size.to_be_bytes());
-        buf[4..8].copy_from_slice(&self.correlation_id.to_be_bytes());
-        buf[8..10].copy_from_slice(&self.error_code.to_be_bytes());
-        buf
+    fn to_bytes(&self) -> Bytes {
+        let mut buf = BytesMut::new();
+
+        // Message size on 4bytes
+        buf.put_i32(self.size());
+
+        // Response Header on 4 bytes
+        buf.put_i32(self.header());
+
+        // Response body
+        // Error code on 2 bytes
+        buf.put_i16(self.error_code);
+
+        // API versions array on 1 + 7 * n bytes
+        // https://binspec.org/kafka-api-versions-Response-v4?highlight=10-31
+        buf.extend_from_slice(&Into::<Bytes>::into(self.api_versions));
+
+        buf.put_i32(THROTTLE_TIMER);
+        buf.put_i8(TAG_BUFFER);
+
+        // Convert to Bytes (zero-copy)
+        buf.freeze()
+    }
+
+    fn size(&self) -> i32 {
+        API_VERSIONS.size() as i32
+            + HEADER_SIZE
+            + ERROR_CODE_SIZE
+            + THROTTLE_TIME_MS_SIZE
+            + TAG_BUFFER_SIZE
+    }
+
+    fn header(&self) -> i32 {
+        self.correlation_id
     }
 }
 
@@ -48,19 +88,6 @@ impl TryFrom<Bytes> for Request {
     }
 }
 
-impl Into<Bytes> for Request {
-    fn into(self) -> Bytes {
-        let mut buf = BytesMut::new();
-
-        buf.put_i32(self.message_size);
-        buf.put_i32(self.correlation_id);
-        buf.put_i16(self.request_api_key);
-        buf.put_i16(self.request_api_version);
-
-        buf.freeze()
-    }
-}
-
 fn handle_connection(mut stream: TcpStream) {
     println!("accepted new connection");
     // For now assume we read only the first 12 bytes.
@@ -76,13 +103,20 @@ fn handle_connection(mut stream: TcpStream) {
 
     println!("Parsed request: {req:?}");
 
+    let error_code = if req.request_api_version == 4 {
+        0
+    } else {
+        UNSUPPORTED_VERSION_CODE
+    };
+
     let res = Response {
         correlation_id: req.correlation_id,
-        message_size: 0,
-        error_code: 35,
+        error_code,
+        api_versions: API_VERSIONS,
     };
-    let buf = res.to_buffer();
+    let buf = res.to_bytes();
 
+    println!("Sending buffer {buf:?}");
     stream.write_all(&buf).unwrap();
     stream.flush().unwrap();
     stream.shutdown(std::net::Shutdown::Both).unwrap();
