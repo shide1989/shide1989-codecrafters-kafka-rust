@@ -8,6 +8,7 @@ use std::{
     net::{TcpListener, TcpStream},
 };
 
+#[derive(Debug)]
 struct Response {
     // Response header
     correlation_id: i32,
@@ -116,6 +117,7 @@ fn handle_connection(mut stream: TcpStream) {
     };
     let buf = res.to_bytes();
 
+    println!("Sending response {res:?}");
     println!("Sending buffer {buf:?}");
     stream.write_all(&buf).unwrap();
     stream.flush().unwrap();
