@@ -5,6 +5,8 @@ use codecrafters_kafka::versions::*;
 
 use std::io::prelude::*;
 
+use std::thread;
+use std::thread::JoinHandle;
 use std::{
     io::Write,
     net::{TcpListener, TcpStream},
@@ -13,9 +15,6 @@ const MESSAGE_SIZE_BYTES: usize = 4;
 // Request message size header
 fn handle_connection(mut stream: TcpStream) {
     println!("accepted new connection");
-    // stream
-    //     .set_nonblocking(true)
-    //     .expect("set_nonblocking call failed");
 
     let mut buf: BytesMut = BytesMut::zeroed(MESSAGE_SIZE_BYTES);
     // Read the message size header
@@ -65,16 +64,25 @@ fn handle_connection(mut stream: TcpStream) {
 
 fn main() -> std::io::Result<()> {
     let listener = TcpListener::bind("127.0.0.1:9092")?;
-
+    let mut threads: Vec<JoinHandle<()>> = vec![];
     for stream in listener.incoming() {
         match stream {
             Ok(stream) => {
-                handle_connection(stream);
+                let clone = stream.try_clone()?;
+                let handler = thread::spawn(|| {
+                    handle_connection(clone);
+                });
+
+                threads.push(handler);
             }
             Err(e) => {
                 eprintln!("Connection failed {e}")
             }
         }
     }
+
+    threads.into_iter().for_each(|t| {
+        t.join().expect("Expected thread to join.");
+    });
     Ok(())
 }
