@@ -7,7 +7,7 @@ pub struct Response {
     pub correlation_id: i32,
     // Response body
     pub error_code: i16,
-    pub api_versions: SupportedVersions,
+    pub api_versions: SupportedApiKeys,
 }
 
 // const RESPONSE_CAPACITY: usize = 32;

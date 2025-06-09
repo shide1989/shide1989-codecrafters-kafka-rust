@@ -1,24 +1,32 @@
 use bytes::{BufMut, Bytes, BytesMut};
 pub const UNSUPPORTED_VERSION_CODE: i16 = 35;
 
-pub const API_VERSIONS: SupportedVersions = SupportedVersions {
-    versions: [ApiVersion {
-        api_key: 18,
-        min_version: 4,
-        max_version: 4,
-        tag_buffer: 0,
-    }],
+pub const API_VERSIONS: SupportedApiKeys = SupportedApiKeys {
+    versions: [
+        ApiKey {
+            api_key: 18, // APIVersions
+            min_version: 4,
+            max_version: 4,
+            tag_buffer: 0,
+        },
+        ApiKey {
+            api_key: 75, // DescribeTopicPartitions
+            min_version: 0,
+            max_version: 0,
+            tag_buffer: 0,
+        },
+    ],
 };
 
 #[derive(Clone, Copy, Debug)]
-pub struct ApiVersion {
+pub struct ApiKey {
     api_key: i16,
     min_version: i16,
     max_version: i16,
     tag_buffer: i8,
 }
 
-impl Into<Bytes> for ApiVersion {
+impl Into<Bytes> for ApiKey {
     fn into(self) -> Bytes {
         let mut src = BytesMut::with_capacity(7);
         src.put_i16(self.api_key);
@@ -31,18 +39,18 @@ impl Into<Bytes> for ApiVersion {
 }
 
 #[derive(Clone, Copy, Debug)]
-pub struct SupportedVersions {
-    versions: [ApiVersion; 1],
+pub struct SupportedApiKeys {
+    versions: [ApiKey; 2],
 }
 
-impl SupportedVersions {
+impl SupportedApiKeys {
     pub fn size(&self) -> usize {
         println!("versions: {:?}", self.versions.len());
         1 + 7 * self.versions.len() // 1 for the array length
     }
 }
 
-impl Into<Bytes> for SupportedVersions {
+impl Into<Bytes> for SupportedApiKeys {
     fn into(self) -> Bytes {
         let mut buf = BytesMut::with_capacity(self.size());
         // The length of the API Versions array + 1, encoded as a varint.
